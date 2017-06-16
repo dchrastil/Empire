@@ -17,6 +17,7 @@ function do_get_request($url, $optionalHeaders = null)
     $headers['Cookie'] = $optionalHeaders;
   }
   $aContext['http']['header'] = prepareHeaders($headers);
+  $aContext['http']['ssl'] = ['verify_peer' => false, 'allow_self_signed' => true];
   $cxContext = stream_context_create($aContext);
   echo file_get_contents($url, False, $cxContext);
 }
