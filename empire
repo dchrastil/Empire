@@ -11,6 +11,7 @@ import hashlib
 from OpenSSL import SSL
 from Crypto.Random import random
 import ssl
+import eventlet
 
 # Empire imports
 from lib.common import empire, helpers, users
@@ -96,7 +97,7 @@ def get_permanent_token(conn):
 #    Verb     URI                                            Action
 #    ----     ---                                            ------
 #    GET      http://localhost:1337/api/version              return the current Empire version
-#
+#:0
 #    GET      http://localhost:1337/api/config               return the current default config
 #
 #    GET      http://localhost:1337/api/stagers              return all current stagers
@@ -182,25 +183,32 @@ def get_permanent_token(conn):
 #         - Arguments: arguments can vary per action, per event.
 ####################################################################
 
+# Initiate socketio in a GLOBAL context
+app = Flask(__name__)
+conn = database_connect()
+socketio = SocketIO(app)
+
 def handle_event(signal, sender):
     """
     Function to handle events from pydispatcher
     """
-
-
     global empireMenu
     if sender == "Agents":
 	if "[+] Initial agent" in signal:
     	    print signal
-            emit('agents',{'Result':signal})
-
-        if "returned results." in signal:
-            agentName = signal.split("[*] Agent")[-1].split(" ")[0]
-            results = empireMenu.agents.get_agent_results_db(agentName)
-            if results:
-                send({'Agents':results}, room=agentName)
-
-        if ("[+] Listener for" in signal) and ("updated to" in signal):
+	    socketio.emit('agents',{'Result': "test"})
+	if "returned results." in signal:
+            print signal
+	    agentName = signal.split(" ")[2]
+	    socketio.emit('agents',{'Result': signal})
+	    print "SELECT results FROM agents WHERE session_id=%s" % agentName
+            print execute_db_query(conn, "SELECT results FROM agents WHERE session_id=?", agentName)
+	    print results
+	    print "done"
+	    #if results:
+	    	#print "sent results to gui"
+	    	#send({'Agents':results}, room=agentName)
+	'''if ("[+] Listener for" in signal) and ("updated to" in signal):
             send({'Listeners': signal})
 
         elif "[!] Agent" in signal and "exiting" in signal:
@@ -221,7 +229,7 @@ def handle_event(signal, sender):
 
     elif sender == "Users":
         send({'Users':signal})
-
+	'''
 
 def responseThread():
     """
@@ -231,8 +239,8 @@ def responseThread():
     from time import sleep
     dispatcher.connect(handle_event, sender=dispatcher.Any)
 
-    while True:
-        sleep(1)
+    #while True:
+    #    sleep(1)
 
 
 def start_restful_api(empireMenu, user_handler, suppress=False, username=None, password=None, port=1337):
@@ -246,11 +254,11 @@ def start_restful_api(empireMenu, user_handler, suppress=False, username=None, p
     port        -   port to start the API on, defaults to 1337 ;)
     """
 
-    app = Flask(__name__)
+    #app = Flask(__name__)
 
-    conn = database_connect()
+    #conn = database_connect()
 
-    socketio = SocketIO(app)
+    #socketio = SocketIO(app, async_mode='threading')
 
     main = empireMenu
 
@@ -1649,11 +1657,11 @@ def start_restful_api(empireMenu, user_handler, suppress=False, username=None, p
     else:
         proto = ssl.PROTOCOL_SSLv23
 
+    response_thread = socketio.start_background_task(target=responseThread)
     context = ssl.SSLContext(proto)
     context.load_cert_chain("%s/empire-chain.pem" % (certPath), "%s/empire-priv.key" % (certPath))
     #socketio.run(app, host='0.0.0.0', port=int(port), ssl_context=context)
     socketio.run(app, host='0.0.0.0', port=int(port))
-    response_thread = socketio.start_background_task(target=responseThread)
 
 
 if __name__ == '__main__':
